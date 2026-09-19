@@ -156,3 +156,11 @@ body {
   }
   html { scroll-behavior: auto; }
 }
+
+/* Tarayıcı otomatik doldurma (autofill) yazıyı siyah yapma */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-text-fill-color: black !important;
+}

@@ -178,8 +178,8 @@ export default function RegisterPage() {
             <div className="relative">
               <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Adınız Soyadınız" required
-                className="w-full pl-9 pr-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
-                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
+                className="w-full pl-9 pr-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none !text-black !bg-white"
+                style={{ border: "1px solid var(--border)" }}
                 onFocus={(e) => e.target.style.borderColor = "var(--accent)"}
                 onBlur={(e) => e.target.style.borderColor = "var(--border)"} />
             </div>
@@ -189,8 +189,8 @@ export default function RegisterPage() {
             <div className="relative">
               <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ornek@email.com" required
-                className="w-full pl-9 pr-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none !text-black"
-                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "#000" }}
+                className="w-full pl-9 pr-4 py-3 rounded-xl text-sm transition-all duration-200 outline-none !text-black !bg-white"
+                style={{ border: "1px solid var(--border)" }}
                 onFocus={(e) => e.target.style.borderColor = "var(--accent)"}
                 onBlur={(e) => e.target.style.borderColor = "var(--border)"} />
             </div>
@@ -201,8 +201,8 @@ export default function RegisterPage() {
               <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
               <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••" required minLength={8}
-                className="w-full pl-9 pr-10 py-3 rounded-xl text-sm transition-all duration-200 outline-none"
-                style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}
+                className="w-full pl-9 pr-10 py-3 rounded-xl text-sm transition-all duration-200 outline-none !text-black !bg-white"
+                style={{ border: "1px solid var(--border)" }}
                 onFocus={(e) => e.target.style.borderColor = "var(--accent)"}
                 onBlur={(e) => e.target.style.borderColor = "var(--border)"} />
               <button type="button" onClick={() => setShowPassword(!showPassword)}
