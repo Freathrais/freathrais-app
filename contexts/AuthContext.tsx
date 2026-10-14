@@ -323,7 +323,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await claimUsernameFor(newUser, username);
         // Kayıt tamamlandıktan sonra doğrulama maili gönder
         try {
-          await sendEmailVerification(newUser);
+          const actionCodeSettings = {
+            url: typeof window !== "undefined" && window.location.origin.includes("freathrais.com")
+              ? "https://freathrais.com/profil"
+              : typeof window !== "undefined"
+                ? `${window.location.origin}/profil`
+                : "https://freathrais.com/profil",
+          };
+          await sendEmailVerification(newUser, actionCodeSettings);
         } catch {
           /* Mail gönderilemezse kayıt yine de tamamlansın */
         }
@@ -348,7 +355,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendVerificationEmail = async () => {
     if (!auth.currentUser) throw new Error("not-authenticated");
-    await sendEmailVerification(auth.currentUser);
+    const actionCodeSettings = {
+      url: typeof window !== "undefined" && window.location.origin.includes("freathrais.com")
+        ? "https://freathrais.com/profil"
+        : typeof window !== "undefined"
+          ? `${window.location.origin}/profil`
+          : "https://freathrais.com/profil",
+    };
+    await sendEmailVerification(auth.currentUser, actionCodeSettings);
   };
 
   /** Zorunlu kullanıcı adı ekranında vazgeçilirse: yeni hesap silinir, eski hesap çıkış yapar */
