@@ -1,11 +1,12 @@
 "use client";
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { User, Camera, Mail, CheckCircle2, AlertCircle, Save, Phone } from "lucide-react";
 import { updateProfile } from "firebase/auth";
 import { doc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { motion } from "framer-motion";
 import { db, storage } from "@/lib/firebase/config";
+import { useAuth } from "@/contexts/AuthContext";
 import { countries, turkeyCities } from "@/lib/data/locations";
 import PhoneVerificationModal from "@/components/PhoneVerificationModal";
 import { inputStyle, selectStyle, type StatusMsg } from "@/lib/types/profile";
@@ -51,6 +52,58 @@ export default function AccountTab({
   updateUserProfileData,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { sendVerificationEmail } = useAuth();
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(0);
+  const COOLDOWN_S = 90;
+  const LS_SENT_KEY = "freathrais-verif-sent-at";
+
+  useEffect(() => {
+    try {
+      const sent = Number(localStorage.getItem(LS_SENT_KEY));
+      if (sent) {
+        const elapsed = Math.floor((Date.now() - sent) / 1000);
+        const remaining = COOLDOWN_S - elapsed;
+        if (remaining > 0) setEmailCooldown(remaining);
+      }
+    } catch { /* yok say */ }
+  }, []);
+
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const t = setInterval(() => {
+      setEmailCooldown((prev) => {
+        if (prev <= 1) { clearInterval(t); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [emailCooldown]);
+
+  const handleSendEmailVerification = async () => {
+    if (emailSending || emailCooldown > 0) return;
+    setEmailSending(true);
+    setAccountStatus(null);
+    try {
+      await sendVerificationEmail();
+      const now = Date.now();
+      setEmailCooldown(COOLDOWN_S);
+      try { localStorage.setItem(LS_SENT_KEY, String(now)); } catch { /* yok say */ }
+      setAccountStatus({
+        type: "success",
+        msg: `Doğrulama bağlantısı ${user.email} adresinize gönderildi! Lütfen gelen kutunuzu (ve gerekiyorsa spam klasörünü) kontrol edin.`,
+      });
+    } catch (err: any) {
+      if (err?.code === "auth/too-many-requests") {
+        setEmailCooldown(COOLDOWN_S);
+        setAccountStatus({ type: "error", msg: "Çok fazla istek gönderildi. Lütfen biraz bekleyin." });
+      } else {
+        setAccountStatus({ type: "error", msg: "Doğrulama e-postası gönderilemedi. Lütfen tekrar deneyin." });
+      }
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   const getMaskedEmail = (email: string | null) => {
     if (!email) return "Bilinmiyor";
@@ -271,11 +324,26 @@ export default function AccountTab({
                 style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)" }}>
                 <CheckCircle2 size={12} /> Doğrulandı
               </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(245,158,11,0.15)", color: "#b45309" }}>
-                Doğrulanmadı
+            ) : emailCooldown > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-lg tabular-nums"
+                style={{ background: "rgba(234,179,8,0.15)", color: "#b45309" }}>
+                Gönderildi ✓ ({emailCooldown}s)
               </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendEmailVerification}
+                disabled={emailSending}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-lg font-bold transition-all hover:scale-105 disabled:opacity-50"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                {emailSending ? (
+                  <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  <Mail size={12} />
+                )}
+                Doğrula
+              </button>
             )}
           </div>
           <div className="relative">
@@ -284,7 +352,13 @@ export default function AccountTab({
               className="w-full pl-10 pr-4 py-3 rounded-xl text-sm opacity-60 cursor-not-allowed"
               style={inputStyle} />
           </div>
-          <p className="text-xs mt-1.5" style={{ color: "var(--text-subtle)" }}>* E-posta adresi güvenlik sebebiyle değiştirilemez.</p>
+          <p className="text-xs mt-1.5" style={{ color: user.emailVerified ? "var(--success)" : "var(--text-subtle)" }}>
+            {user.emailVerified
+              ? "✓ E-posta adresiniz başarıyla onaylanmıştır."
+              : emailCooldown > 0
+                ? "✓ Doğrulama bağlantısı e-postanıza gönderildi, lütfen gelen kutunuzu (ve gerekiyorsa spam klasörünü) kontrol edin."
+                : "* E-posta adresi güvenlik sebebiyle değiştirilemez. Hesabınızı doğrulamak için \"Doğrula\" butonuna tıklayın."}
+          </p>
         </div>
 
         <button onClick={handleAccountSave}
