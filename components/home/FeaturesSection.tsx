@@ -1,5 +1,5 @@
 "use client";
-import { motion } from "framer-motion";
+import { Variants, motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight, BookOpen, ShoppingBag, Users } from "lucide-react";
 
@@ -27,14 +27,14 @@ const features = [
   },
 ];
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1 } },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeInOut" } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
 export default function FeaturesSection() {

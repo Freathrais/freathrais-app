@@ -17,6 +17,7 @@ import {
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
+  sendEmailVerification,
   updateProfile,
 } from "firebase/auth";
 import {
@@ -26,6 +27,7 @@ import {
   deleteDoc,
   runTransaction,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/config";
 import { normalizeUsername, validateUsername } from "@/lib/username";
@@ -46,6 +48,7 @@ interface UserData {
   city?: string;
   district?: string;
   addressDetail?: string;
+  phoneVerified?: boolean;
 }
 
 interface AuthContextType {
@@ -68,6 +71,8 @@ interface AuthContextType {
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   claimUsername: (username: string) => Promise<void>;
   cancelRegistration: () => Promise<void>;
+  updateUserProfileData: (updates: Partial<UserData>) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -205,7 +210,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserData({ ...userData, favorites: newFavorites });
   };
 
+  const updateUserProfileData = async (updates: Partial<UserData>) => {
+    if (!user) throw new Error("not-authenticated");
+    const userRef = doc(db, "users", user.uid);
+    await setDoc(userRef, updates, { merge: true });
+    setUserData((prev) => (prev ? { ...prev, ...updates } : null));
+  };
+
   useEffect(() => {
+    let docUnsub: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // Uzun süredir girilmediyse oturumu kapat
@@ -228,13 +241,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           console.error("Kullanici verisi okunamadi:", e);
         }
+        // Profil güncellemelerini anında tüm uygulamaya yansıt
+        if (docUnsub) docUnsub();
+        docUnsub = onSnapshot(doc(db, "users", firebaseUser.uid), (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as UserData;
+            setUserData((prev) => (prev ? { ...prev, ...data } : data));
+          }
+        });
       } else {
+        if (docUnsub) {
+          docUnsub();
+          docUnsub = null;
+        }
         claimedUsernameRef.current = null;
         setUserData(null);
       }
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (docUnsub) docUnsub();
+    };
   }, []);
 
   // Oturum açıkken kullanıcı aktifse son aktiflik zamanını güncelle
@@ -293,6 +321,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await updateProfile(newUser, { displayName: name });
         await claimUsernameFor(newUser, username);
+        // Kayıt tamamlandıktan sonra doğrulama maili gönder
+        try {
+          await sendEmailVerification(newUser);
+        } catch {
+          /* Mail gönderilemezse kayıt yine de tamamlansın */
+        }
       } catch (err) {
         // Kullanıcı adı alınamadıysa (örn. aynı anda başkası aldı) kayıt tamamlanmasın
         try {
@@ -310,6 +344,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setRegistering(false);
     }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (!auth.currentUser) throw new Error("not-authenticated");
+    await sendEmailVerification(auth.currentUser);
   };
 
   /** Zorunlu kullanıcı adı ekranında vazgeçilirse: yeni hesap silinir, eski hesap çıkış yapar */
@@ -372,6 +411,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         checkUsernameAvailable,
         claimUsername,
         cancelRegistration,
+        updateUserProfileData,
+        sendVerificationEmail,
       }}
     >
       {children}

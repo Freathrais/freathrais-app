@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { Variants, motion } from "framer-motion";
 import { YoutubeIcon, InstagramIcon, TikTokIcon, GithubIcon } from "@/components/SocialIcons";
 
 const socials = [
@@ -10,14 +10,14 @@ const socials = [
   { href: "https://github.com/freathrais", icon: GithubIcon, label: "GitHub", followers: "500+", color: "#FFFFFF" },
 ];
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1 } },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeInOut" } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
 export default function SocialMediaSection() {

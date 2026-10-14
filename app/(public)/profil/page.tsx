@@ -1,9 +1,9 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
-  User, Shield, Mail, Lock, Camera, CheckCircle2, AlertCircle, Save, Heart, ShoppingBag, Package, Truck, Clock, ChevronDown, ChevronUp
+  User, Shield, Mail, Lock, Camera, CheckCircle2, AlertCircle, Save, Heart, ShoppingBag, Package, Truck, Clock, ChevronDown, ChevronUp, Phone
 } from "lucide-react";
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider, updateProfile } from "firebase/auth";
 import { doc, updateDoc } from "firebase/firestore";
@@ -15,9 +15,10 @@ import { countries, turkeyCities } from "@/lib/data/locations";
 import ProductCard from "@/components/ProductCard";
 import PasswordRequirements from "@/components/PasswordRequirements";
 import { isPasswordValid } from "@/lib/password";
+import PhoneVerificationModal from "@/components/PhoneVerificationModal";
 
 export default function ProfilPage() {
-  const { user, userData, loading, toggleFavorite } = useAuth();
+  const { user, userData, loading, toggleFavorite, updateUserProfileData } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"account" | "security" | "favorites" | "orders">("account");
   
@@ -30,9 +31,77 @@ export default function ProfilPage() {
   const [district, setDistrict] = useState(userData?.district || "");
   const [addressDetail, setAddressDetail] = useState(userData?.addressDetail || "");
   
+  // Telefon Doğrulama Durumu — local state değil, userData'dan reactive olarak türetilir
+  // (pageRefresh + Firestore gecikmesine karşı en sağlam yöntem)
+  const [pendingVerifiedPhone, setPendingVerifiedPhone] = useState<string | null>(null);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+
+  // Gerçek doğrulama durumu: Firestore'a kaydedilmiş phoneVerified=true VE numara aynıysa
+  // VEYA bu oturumda yeni doğrulandıysa (pendingVerifiedPhone)
+  const isPhoneVerified =
+    (!!userData?.phoneVerified && userData?.phone === phone.trim()) ||
+    pendingVerifiedPhone === phone.trim();
+
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accountStatus, setAccountStatus] = useState<{ type: "success" | "error", msg: string } | null>(null);
+
+  // Firestore'dan userData yüklendiğinde veya değiştiğinde form alanlarını doldur (sayfa yenilense de kaybolmaz)
+  useEffect(() => {
+    if (userData) {
+      if (userData.displayName) setDisplayName(userData.displayName);
+      else if (user?.displayName && !displayName) setDisplayName(user.displayName);
+      if (userData.username) setUsername(userData.username);
+      if (userData.phone) setPhone(userData.phone);
+      if (userData.country) setCountry(userData.country);
+      if (userData.city) setCity(userData.city);
+      if (userData.district) setDistrict(userData.district);
+      if (userData.addressDetail) setAddressDetail(userData.addressDetail);
+    } else if (user?.displayName && !displayName) {
+      setDisplayName(user.displayName);
+    }
+  }, [userData, user]);
+
+  const handlePhoneChange = (val: string) => {
+    setPhone(val);
+    // isPhoneVerified artık computed — manuel set'e gerek yok
+  };
+
+  const handleStartVerification = () => {
+    const cleanPhone = phone.trim().replace(/\s/g, "");
+    if (cleanPhone.length < 10) {
+      setAccountStatus({ type: "error", msg: "Lütfen en az 10 haneli geçerli bir telefon numarası giriniz." });
+      return;
+    }
+    setAccountStatus(null);
+    setIsVerificationModalOpen(true);
+  };
+
+  const handleVerificationSuccess = async () => {
+    // Anında UI'da doğrulanmış göster (Firestore yanıtı beklenmeden)
+    setPendingVerifiedPhone(phone.trim());
+    setIsVerificationModalOpen(false);
+
+    // Firestore'a kaydet — sayfa yenilenince de kalıcı olsun
+    if (user) {
+      try {
+        await updateUserProfileData({
+          phone: phone.trim(),
+          phoneVerified: true,
+        });
+        setAccountStatus({
+          type: "success",
+          msg: "Telefon numaranız başarıyla doğrulandı ve kaydedildi!",
+        });
+      } catch {
+        setAccountStatus({
+          type: "error",
+          msg: "Doğrulama başarılı ancak kaydedilemedi. Lütfen tekrar deneyin.",
+        });
+        setPendingVerifiedPhone(null);
+      }
+    }
+  };
 
   // Security State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -132,32 +201,48 @@ export default function ProfilPage() {
 
   const handleAccountSave = async () => {
     if (!user) return;
-    setIsUpdatingAccount(true);
     setAccountStatus(null);
     
-    try {
-      const updates: any = {};
-      if (displayName !== user.displayName) {
-        await updateProfile(user, { displayName });
-        updates.displayName = displayName;
-      }
-      
-      // Kullanıcı adı buradan değiştirilemez: yalnızca kayıt / zorunlu ekran üzerinden (benzersizlik kontrolüyle) alınır.
-      if (phone !== userData?.phone) updates.phone = phone;
-      if (country !== userData?.country) updates.country = country;
-      if (city !== userData?.city) updates.city = city;
-      if (district !== userData?.district) updates.district = district;
-      if (addressDetail !== userData?.addressDetail) updates.addressDetail = addressDetail;
+    if (!displayName.trim()) {
+      setAccountStatus({ type: "error", msg: "Ad Soyad alanı zorunludur." });
+      return;
+    }
 
-      if (Object.keys(updates).length > 0) {
-        await updateDoc(doc(db, "users", user.uid), updates);
-        setAccountStatus({ type: "success", msg: "Hesap bilgileri başarıyla güncellendi." });
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        setAccountStatus({ type: "success", msg: "Değişiklik yapılmadı." });
+    if (!phone.trim()) {
+      setAccountStatus({ type: "error", msg: "Telefon numarası alanı zorunludur." });
+      return;
+    }
+
+    // Telefon numarası girilmişse doğrulanmış olmak zorunda!
+    if (!isPhoneVerified) {
+      setAccountStatus({ type: "error", msg: "Lütfen kaydetmeden önce telefon numaranızı doğrulayınız." });
+      setIsVerificationModalOpen(true);
+      return;
+    }
+
+    setIsUpdatingAccount(true);
+
+    try {
+      const cleanName = displayName.trim();
+      const updates: any = {
+        displayName: cleanName,
+        phone: phone.trim(),
+        phoneVerified: true,
+        country: country || "Türkiye",
+        city: city || "",
+        district: district || "",
+        addressDetail: addressDetail || "",
+      };
+
+      if (cleanName !== user.displayName) {
+        await updateProfile(user, { displayName: cleanName });
       }
+
+      await updateUserProfileData(updates);
+      setAccountStatus({ type: "success", msg: "Hesap bilgileriniz başarıyla kaydedildi!" });
     } catch (error) {
-      setAccountStatus({ type: "error", msg: "Bilgiler güncellenirken bir hata oluştu." });
+      console.error("Bilgiler güncellenirken hata:", error);
+      setAccountStatus({ type: "error", msg: "Bilgiler kaydedilirken bir hata oluştu." });
     } finally {
       setIsUpdatingAccount(false);
     }
@@ -361,13 +446,59 @@ export default function ProfilPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>Telefon Numarası <span style={{ color: "var(--danger)" }}>*</span></label>
-                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required
-                        placeholder="0555 555 55 55"
-                        className="w-full px-4 py-3 rounded-xl text-sm"
-                        style={inputStyle}
-                        onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                        onBlur={(e) => (e.target.style.borderColor = "var(--border)")} />
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                          Telefon Numarası <span style={{ color: "var(--danger)" }}>*</span>
+                        </label>
+                        {isPhoneVerified ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)" }}>
+                            <CheckCircle2 size={12} /> Doğrulandı
+                          </span>
+                        ) : phone.trim().length >= 10 ? (
+                          <button
+                            type="button"
+                            onClick={handleStartVerification}
+                            className="text-xs px-2.5 py-0.5 rounded-lg font-bold transition-all hover:scale-105"
+                            style={{ background: "var(--accent)", color: "#fff" }}
+                          >
+                            Doğrula
+                          </button>
+                        ) : (
+                          <span className="text-xs" style={{ color: "var(--warning)" }}>* Doğrulama zorunlu</span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => handlePhoneChange(e.target.value)}
+                          required
+                          placeholder="0555 555 55 55"
+                          className="w-full px-4 py-3 rounded-xl text-sm"
+                          style={{
+                            ...inputStyle,
+                            borderColor: isPhoneVerified ? "var(--success)" : undefined,
+                          }}
+                          onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
+                          onBlur={(e) => (e.target.style.borderColor = isPhoneVerified ? "var(--success)" : "var(--border)")}
+                        />
+                        {!isPhoneVerified && phone.trim().length >= 10 && (
+                          <button
+                            type="button"
+                            onClick={handleStartVerification}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-90"
+                            style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+                          >
+                            Kodu Gönder
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs mt-1.5" style={{ color: isPhoneVerified ? "var(--success)" : "var(--text-subtle)" }}>
+                        {isPhoneVerified
+                          ? "✓ Telefon numaranız başarıyla onaylanmıştır."
+                          : "Telefon numaranızı kaydetmek için doğrulama kodunu alıp onaylamanız gerekir."}
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -422,7 +553,20 @@ export default function ProfilPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>E-posta Adresi</label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>E-posta Adresi</label>
+                        {user.emailVerified ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)" }}>
+                            <CheckCircle2 size={12} /> Doğrulandı
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: "rgba(245,158,11,0.15)", color: "#b45309" }}>
+                            Doğrulanmadı
+                          </span>
+                        )}
+                      </div>
                       <div className="relative">
                         <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
                         <input type="text" value={getMaskedEmail(user.email)} disabled
@@ -434,20 +578,7 @@ export default function ProfilPage() {
 
                     <button 
                       onClick={handleAccountSave}
-                      disabled={
-                        isUpdatingAccount || 
-                        !phone || // zorunlu alan
-                        !displayName || // zorunlu alan
-                        (
-                          displayName === user.displayName && 
-                          username === userData?.username &&
-                          phone === userData?.phone &&
-                          country === userData?.country &&
-                          city === userData?.city &&
-                          district === userData?.district &&
-                          addressDetail === userData?.addressDetail
-                        )
-                      }
+                      disabled={isUpdatingAccount || !phone.trim() || !displayName.trim()}
                       className="w-full sm:w-auto mt-4 px-8 py-3.5 rounded-2xl text-sm font-semibold transition-all hover:opacity-90 hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2"
                       style={{ background: "var(--primary)", color: "var(--primary-fg)", boxShadow: "0 0 20px var(--glow)" }}
                     >
@@ -700,6 +831,13 @@ export default function ProfilPage() {
           </motion.div>
         </div>
       </div>
+
+      <PhoneVerificationModal
+        isOpen={isVerificationModalOpen}
+        phone={phone}
+        onSuccess={handleVerificationSuccess}
+        onClose={() => setIsVerificationModalOpen(false)}
+      />
     </div>
   );
 }

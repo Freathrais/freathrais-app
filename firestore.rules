@@ -33,8 +33,7 @@ service cloud.firestore {
     // Kullanıcı adı bir kez atandıktan sonra değiştirilemez
     function usernameRule() {
       return ('username' in resource.data)
-        ? (request.resource.data.username == resource.data.username
-            && request.resource.data.get('usernameLower', null) == resource.data.get('usernameLower', null))
+        ? (request.resource.data.username == resource.data.username)
         : (!('username' in request.resource.data) || validNewUsername(request.resource.data));
     }
 
@@ -42,11 +41,11 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid == userId;
 
       allow create: if signedIn() && request.auth.uid == userId
-        && request.resource.data.role == 'customer'
+        && (!('role' in request.resource.data) || request.resource.data.role == 'customer')
         && (!('username' in request.resource.data) || validNewUsername(request.resource.data));
 
       allow update: if signedIn() && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role
+        && (!('role' in request.resource.data) || !('role' in resource.data) || request.resource.data.role == resource.data.role)
         && usernameRule();
 
       // Kullanıcı adı almamış (yarım kalmış) hesabın belgesi silinebilir
