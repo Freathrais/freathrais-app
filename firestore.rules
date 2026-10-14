@@ -2,46 +2,99 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc(request.auth.uid).data.role == 'admin';
+    }
+
+    function isEditor() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc(request.auth.uid).data.role in ['admin', 'editor'];
+    }
+
+    // Kullanıcı adı: yalnızca usernames/{ad} belgesi bu kullanıcıya aitse (aynı işlemde alındıysa) kabul edilir
+    function validNewUsername(data) {
+      return data.username is string
+        && data.username.matches('^[a-zA-Z0-9_]{3,20}$')
+        && data.usernameLower == data.username.lower()
+        && getAfter(/databases/$(database)/documents/usernames/$(data.usernameLower)).data.uid == request.auth.uid;
+    }
+
+    // Kullanıcı adı bir kez atandıktan sonra değiştirilemez
+    function usernameRule() {
+      return ('username' in resource.data)
+        ? (request.resource.data.username == resource.data.username
+            && request.resource.data.get('usernameLower', null) == resource.data.get('usernameLower', null))
+        : (!('username' in request.resource.data) || validNewUsername(request.resource.data));
+    }
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null && request.auth.uid == userId
-        && !('role' in request.resource.data);
-      allow read, write: if request.auth != null
-        && get(/databases//documents/users/).data.role == 'admin';
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      allow create: if signedIn() && request.auth.uid == userId
+        && request.resource.data.role == 'customer'
+        && (!('username' in request.resource.data) || validNewUsername(request.resource.data));
+
+      allow update: if signedIn() && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role
+        && usernameRule();
+
+      // Kullanıcı adı almamış (yarım kalmış) hesabın belgesi silinebilir
+      allow delete: if signedIn() && request.auth.uid == userId
+        && !('username' in resource.data);
+
+      allow read, write: if isAdmin();
+    }
+
+    // Kullanıcı adı rezervasyonları: ad -> sahibi. Tek tek okunabilir (müsaitlik kontrolü), listelenemez.
+    match /usernames/{name} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && name.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.username is string
+        && request.resource.data.username.lower() == name
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'createdAt']);
+      allow update, delete: if false;
     }
 
     match /posts/{postId} {
-      allow read: if resource.data.status == 'published';
-      allow write: if request.auth != null
-        && get(/databases//documents/users/).data.role in ['admin', 'editor'];
+      allow read: if resource.data.status == 'published' || isEditor();
+      allow write: if isEditor();
     }
 
     match /products/{productId} {
       allow read: if true;
-      allow write: if request.auth != null
-        && get(/databases//documents/users/).data.role == 'admin';
+      allow write: if isAdmin();
     }
 
     match /orders/{orderId} {
-      allow read: if request.auth != null
-        && (request.auth.uid == resource.data.userId
-          || get(/databases//documents/users/).data.role == 'admin');
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null
-        && get(/databases//documents/users/).data.role == 'admin';
+      allow read: if signedIn()
+        && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
     }
 
     match /comments/{commentId} {
-      allow read: if resource.data.status == 'approved';
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null
-        && get(/databases//documents/users/).data.role in ['admin', 'editor'];
+      allow read: if resource.data.status == 'approved' || isEditor();
+      allow create: if signedIn();
+      allow update, delete: if isEditor();
     }
 
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if request.auth != null
-        && get(/databases//documents/users/).data.role == 'admin';
+      allow write: if isAdmin();
     }
   }
 }

@@ -1,12 +1,22 @@
 "use client";
-import { ShoppingBag, Star, Heart } from "lucide-react";
+import { useState } from "react";
+import { ShoppingBag, Star, Heart, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
 import { useRouter } from "next/navigation";
 import { Product } from "@/lib/data/products";
 
 export default function ProductCard({ product }: { product: Product }) {
   const { user, userData, toggleFavorite } = useAuth();
+  const { addItem } = useCart();
   const router = useRouter();
+  const [added, setAdded] = useState(false);
+
+  const handleAddToCart = () => {
+    addItem(product);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1600);
+  };
 
   const isFavorite = userData?.favorites?.includes(product.id) || false;
 
@@ -62,9 +72,15 @@ export default function ProductCard({ product }: { product: Product }) {
               </span>
             )}
           </div>
-          <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90 hover:scale-105"
-            style={{ background: "var(--primary)", color: "var(--primary-fg)", boxShadow: "0 0 12px var(--glow)" }}>
-            <ShoppingBag size={12} /> Sepete Ekle
+          <button onClick={handleAddToCart}
+            aria-label={`${product.name} ürününü sepete ekle`}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90 hover:scale-105 active:scale-95"
+            style={{
+              background: added ? "var(--success)" : "var(--primary)",
+              color: added ? "#fff" : "var(--primary-fg)",
+              boxShadow: "0 0 12px var(--glow)",
+            }}>
+            {added ? <><Check size={12} /> Eklendi</> : <><ShoppingBag size={12} /> Sepete Ekle</>}
           </button>
         </div>
       </div>

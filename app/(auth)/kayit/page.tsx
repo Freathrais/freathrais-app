@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import UsernameField, { useUsernameStatus } from "@/components/UsernameField";
+import PasswordRequirements from "@/components/PasswordRequirements";
+import { isPasswordValid } from "@/lib/password";
 
 const GithubIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -12,43 +15,14 @@ const GithubIcon = () => (
   </svg>
 );
 
-function PasswordStrength({ password }: { password: string }) {
-  const checks = [
-    { label: "En az 8 karakter", ok: password.length >= 8 },
-    { label: "Büyük harf", ok: /[A-Z]/.test(password) },
-    { label: "Rakam", ok: /[0-9]/.test(password) },
-    { label: "Özel karakter", ok: /[!@#$%^&*]/.test(password) },
-  ];
-  const strength = checks.filter((c) => c.ok).length;
-  const colors = ["var(--danger)", "var(--warning)", "var(--warning)", "var(--success)", "var(--success)"];
 
-  if (!password) return null;
-  return (
-    <div className="mt-2 space-y-1.5">
-      <div className="flex gap-1">
-        {[0, 1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="flex-1 h-1 rounded-full transition-all duration-300"
-            style={{ background: i < strength ? colors[strength] : "var(--border)" }}
-          />
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-        {checks.map((c) => (
-          <span key={c.label} className="flex items-center gap-1 text-xs" style={{ color: c.ok ? "var(--success)" : "var(--text-subtle)" }}>
-            <CheckCircle2 size={10} /> {c.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function RegisterPage() {
   const { signInWithGoogle, signInWithGithub, signUpWithEmail } = useAuth();
   const router = useRouter();
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const usernameState = useUsernameStatus(username);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -84,13 +58,25 @@ export default function RegisterPage() {
   const handleEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (usernameState.status !== "available") {
+      setError(usernameState.message || "Lütfen geçerli ve müsait bir kullanıcı adı seçin.");
+      return;
+    }
+    if (!isPasswordValid(password)) {
+      setError("Şifreniz tüm gereksinimleri karşılamalı.");
+      return;
+    }
     setLoading("email");
     try {
-      await signUpWithEmail(email, password, name);
+      await signUpWithEmail(email, password, name, username);
       router.push("/");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("email-already-in-use")) {
+      if (msg.includes("username-taken")) {
+        setError("Bu kullanıcı adı başkası tarafından kullanılıyor. Lütfen başka bir ad seçin.");
+      } else if (msg.includes("username-invalid")) {
+        setError("Geçersiz kullanıcı adı.");
+      } else if (msg.includes("email-already-in-use")) {
         setError("Bu e-posta adresi zaten kullanılıyor.");
       } else {
         setError("Kayıt olunamadı. Lütfen tekrar deneyin.");
@@ -164,6 +150,9 @@ export default function RegisterPage() {
             {loading === "github" ? <div className="w-4 h-4 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" /> : <GithubIcon />}
             GitHub ile Kayıt Ol
           </button>
+          <p className="text-xs text-center" style={{ color: "var(--text-subtle)" }}>
+            Google / GitHub ile kayıt olursan, girişten hemen sonra kullanıcı adı oluşturman istenir.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 mb-6">
@@ -185,6 +174,12 @@ export default function RegisterPage() {
             </div>
           </div>
           <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>Kullanıcı Adı <span style={{ color: "var(--danger)" }}>*</span></label>
+            <UsernameField id="register-username" value={username} onChange={setUsername}
+              status={usernameState.status} message={usernameState.message} />
+            <p className="text-xs -mt-0.5" style={{ color: "var(--warning)" }}>* Kullanıcı adı 1 kişiye özeldir ve sonradan değiştirilemez.</p>
+          </div>
+          <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>E-posta</label>
             <div className="relative">
               <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
@@ -200,7 +195,7 @@ export default function RegisterPage() {
             <div className="relative">
               <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
               <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" required minLength={8}
+                placeholder="••••••••" required autoComplete="new-password"
                 className="w-full pl-9 pr-10 py-3 rounded-xl text-sm transition-all duration-200 outline-none !text-black !bg-white"
                 style={{ border: "1px solid var(--border)" }}
                 onFocus={(e) => e.target.style.borderColor = "var(--accent)"}
@@ -210,7 +205,7 @@ export default function RegisterPage() {
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
-            <PasswordStrength password={password} />
+            <PasswordRequirements password={password} />
           </div>
           <button type="submit" disabled={loading !== null} id="btn-email-register"
             className="w-full py-3.5 rounded-2xl text-sm font-semibold transition-all duration-200 hover:opacity-90 hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"

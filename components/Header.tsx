@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -6,7 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ShoppingBag, Search, User, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useCart } from "@/contexts/CartContext";
 import ThemeSwitcher from "./ThemeSwitcher";
+import CartDrawer from "./CartDrawer";
 
 const navLinks = [
   { href: "/", label: "Ana Sayfa" },
@@ -23,6 +25,12 @@ export default function Header() {
   const pathname = usePathname();
   const { user, userData, logout, isAdmin } = useAuth();
   const { theme } = useTheme();
+  const { itemCount, openCart } = useCart();
+
+  // Sondaki "/" (trailingSlash: true) yüzünden eşleşme bozulmasın diye normalize et
+  const currentPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const isActive = (href: string) =>
+    href === "/" ? currentPath === "/" : currentPath === href || currentPath.startsWith(`${href}/`);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -75,23 +83,25 @@ export default function Header() {
 
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    pathname === link.href
-                      ? "font-semibold"
-                      : "hover:opacity-80"
-                  }`}
-                  style={{
-                    color: pathname === link.href ? "var(--primary)" : "var(--text-muted)",
-                    background: pathname === link.href ? "var(--surface)" : "transparent",
-                  }}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                const active = isActive(link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    aria-current={active ? "page" : undefined}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      active ? "font-semibold" : "hover:opacity-80"
+                    }`}
+                    style={{
+                      color: active ? "var(--primary)" : "var(--text-muted)",
+                      background: active ? "var(--surface)" : "transparent",
+                    }}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
             </nav>
 
             {/* Right Actions */}
@@ -99,17 +109,25 @@ export default function Header() {
               <ThemeSwitcher />
 
               <button
-                aria-label="Sepet"
+                aria-label={`Sepet (${itemCount} ürün)`}
+                onClick={openCart}
                 className="relative p-2 rounded-lg transition-all duration-200 hover:scale-105"
                 style={{ color: "var(--text-muted)", background: "var(--glass)" }}
               >
                 <ShoppingBag size={18} />
-                <span
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center font-bold"
-                  style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
-                >
-                  0
-                </span>
+                <AnimatePresence mode="popLayout">
+                  <motion.span
+                    key={itemCount}
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.4, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                    className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full text-[10px] leading-none flex items-center justify-center font-bold"
+                    style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+                  >
+                    {itemCount > 99 ? "99+" : itemCount}
+                  </motion.span>
+                </AnimatePresence>
               </button>
 
               {user ? (
@@ -241,8 +259,8 @@ export default function Header() {
                       href={link.href}
                       className="block px-5 py-4 rounded-xl text-2xl font-bold transition-all duration-200"
                       style={{
-                        color: pathname === link.href ? "var(--primary)" : "var(--text)",
-                        background: pathname === link.href ? "var(--surface)" : "transparent",
+                        color: isActive(link.href) ? "var(--primary)" : "var(--text)",
+                        background: isActive(link.href) ? "var(--surface)" : "transparent",
                       }}
                     >
                       {link.label}
@@ -265,6 +283,8 @@ export default function Header() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CartDrawer />
     </>
   );
 }

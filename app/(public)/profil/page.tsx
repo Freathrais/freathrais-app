@@ -13,6 +13,8 @@ import { useRouter } from "next/navigation";
 import { products } from "@/lib/data/products";
 import { countries, turkeyCities } from "@/lib/data/locations";
 import ProductCard from "@/components/ProductCard";
+import PasswordRequirements from "@/components/PasswordRequirements";
+import { isPasswordValid } from "@/lib/password";
 
 export default function ProfilPage() {
   const { user, userData, loading, toggleFavorite } = useAuth();
@@ -34,6 +36,7 @@ export default function ProfilPage() {
 
   // Security State
   const [currentPassword, setCurrentPassword] = useState("");
+  const [currentPasswordConfirm, setCurrentPasswordConfirm] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [securityStatus, setSecurityStatus] = useState<{ type: "success" | "error", msg: string } | null>(null);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -139,10 +142,7 @@ export default function ProfilPage() {
         updates.displayName = displayName;
       }
       
-      if (username !== userData?.username && !userData?.username) {
-        // Allow setting username only if it's currently empty
-        updates.username = username;
-      }
+      // Kullanıcı adı buradan değiştirilemez: yalnızca kayıt / zorunlu ekran üzerinden (benzersizlik kontrolüyle) alınır.
       if (phone !== userData?.phone) updates.phone = phone;
       if (country !== userData?.country) updates.country = country;
       if (city !== userData?.city) updates.city = city;
@@ -166,9 +166,22 @@ export default function ProfilPage() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !user.email) return;
-    
-    setIsUpdatingPassword(true);
     setSecurityStatus(null);
+
+    if (currentPassword !== currentPasswordConfirm) {
+      setSecurityStatus({ type: "error", msg: "Mevcut şifre iki alanda aynı olmalı." });
+      return;
+    }
+    if (!isPasswordValid(newPassword)) {
+      setSecurityStatus({ type: "error", msg: "Yeni şifre tüm gereksinimleri karşılamalı." });
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setSecurityStatus({ type: "error", msg: "Yeni şifre mevcut şifreyle aynı olamaz." });
+      return;
+    }
+
+    setIsUpdatingPassword(true);
 
     try {
       const credential = EmailAuthProvider.credential(user.email, currentPassword);
@@ -177,10 +190,13 @@ export default function ProfilPage() {
       
       setSecurityStatus({ type: "success", msg: "Şifreniz başarıyla değiştirildi." });
       setCurrentPassword("");
+      setCurrentPasswordConfirm("");
       setNewPassword("");
     } catch (error: any) {
-      if (error.code === 'auth/invalid-credential') {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
         setSecurityStatus({ type: "error", msg: "Mevcut şifreniz yanlış." });
+      } else if (error.code === 'auth/too-many-requests') {
+        setSecurityStatus({ type: "error", msg: "Çok fazla deneme yaptınız. Lütfen biraz sonra tekrar deneyin." });
       } else {
         setSecurityStatus({ type: "error", msg: "Şifre güncellenirken bir hata oluştu." });
       }
@@ -335,17 +351,13 @@ export default function ProfilPage() {
                         <label className="block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Kullanıcı Adı</label>
                         {userData?.username && <span className="text-xs" style={{ color: "var(--success)" }}>Belirlendi</span>}
                       </div>
-                      <input type="text" value={userData?.username ? userData.username : username} 
-                        onChange={(e) => setUsername(e.target.value)}
-                        disabled={!!userData?.username}
-                        placeholder={userData?.username ? "" : "Bir kereye mahsus oluşturabilirsiniz"}
+                      <input type="text" value={userData?.username || ""}
+                        readOnly
+                        disabled
+                        placeholder="Kullanıcı adı oluşturuluyor..."
                         className="w-full px-4 py-3 rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={inputStyle}
-                        onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                        onBlur={(e) => (e.target.style.borderColor = "var(--border)")} />
-                      {!userData?.username && (
-                        <p className="text-xs mt-1.5" style={{ color: "var(--warning)" }}>* Kullanıcı adı oluşturulduktan sonra değiştirilemez.</p>
-                      )}
+                        style={inputStyle} />
+                      <p className="text-xs mt-1.5" style={{ color: "var(--text-subtle)" }}>Kullanıcı adı size özeldir ve değiştirilemez.</p>
                     </div>
 
                     <div>
@@ -467,6 +479,7 @@ export default function ProfilPage() {
                       <div className="relative">
                         <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
                         <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required
+                          autoComplete="current-password"
                           placeholder="••••••••"
                           className="w-full pl-10 pr-4 py-3 rounded-xl text-sm"
                           style={inputStyle}
@@ -476,22 +489,49 @@ export default function ProfilPage() {
                     </div>
 
                     <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>Mevcut Şifreniz (Tekrar)</label>
+                      <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
+                        <input type="password" value={currentPasswordConfirm} onChange={(e) => setCurrentPasswordConfirm(e.target.value)} required
+                          autoComplete="off"
+                          placeholder="Mevcut şifrenizi tekrar yazın"
+                          className="w-full pl-10 pr-4 py-3 rounded-xl text-sm"
+                          style={{
+                            ...inputStyle,
+                            borderColor: currentPasswordConfirm && currentPasswordConfirm !== currentPassword ? "var(--danger)" : undefined,
+                          }}
+                          onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
+                          onBlur={(e) => (e.target.style.borderColor = currentPasswordConfirm && currentPasswordConfirm !== currentPassword ? "var(--danger)" : "var(--border)")} />
+                      </div>
+                      {currentPasswordConfirm && currentPasswordConfirm !== currentPassword && (
+                        <p className="text-[11px] mt-1.5" style={{ color: "var(--danger)" }}>Şifreler eşleşmiyor.</p>
+                      )}
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>Yeni Şifre</label>
                       <div className="relative">
                         <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-subtle)" }} />
-                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8}
-                          placeholder="En az 8 karakter"
+                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required
+                          autoComplete="new-password"
+                          placeholder="Yeni şifrenizi oluşturun"
                           className="w-full pl-10 pr-4 py-3 rounded-xl text-sm"
                           style={inputStyle}
                           onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
                           onBlur={(e) => (e.target.style.borderColor = "var(--border)")} />
                       </div>
+                      <PasswordRequirements password={newPassword} />
                     </div>
 
                     <button 
                       type="submit"
-                      disabled={isUpdatingPassword || !currentPassword || !newPassword}
-                      className="w-full sm:w-auto mt-4 px-8 py-3.5 rounded-2xl text-sm font-semibold transition-all hover:opacity-90 hover:scale-[1.02] disabled:opacity-50 flex items-center justify-center gap-2"
+                      disabled={
+                        isUpdatingPassword ||
+                        !currentPassword ||
+                        currentPassword !== currentPasswordConfirm ||
+                        !isPasswordValid(newPassword)
+                      }
+                      className="w-full sm:w-auto mt-4 px-8 py-3.5 rounded-2xl text-sm font-semibold transition-all hover:opacity-90 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       style={{ background: "var(--primary)", color: "var(--primary-fg)", boxShadow: "0 0 20px var(--glow)" }}
                     >
                       {isUpdatingPassword ? <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Save size={16} />}

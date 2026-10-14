@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { CartProvider } from "@/contexts/CartContext";
+import UsernameGate from "@/components/UsernameGate";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 export const metadata: Metadata = {
@@ -44,7 +46,8 @@ export default function RootLayout({
       <body style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         <ThemeProvider>
           <AuthProvider>
-            {children}
+            <CartProvider>{children}</CartProvider>
+            <UsernameGate />
           </AuthProvider>
         </ThemeProvider>
       </body>
