@@ -352,13 +352,7 @@ export default function AccountTab({
               className="w-full pl-10 pr-4 py-3 rounded-xl text-sm opacity-60 cursor-not-allowed"
               style={inputStyle} />
           </div>
-          <p className="text-xs mt-1.5" style={{ color: user.emailVerified ? "var(--success)" : "var(--text-subtle)" }}>
-            {user.emailVerified
-              ? "✓ E-posta adresiniz başarıyla onaylanmıştır."
-              : emailCooldown > 0
-                ? "✓ Doğrulama bağlantısı e-postanıza gönderildi, lütfen gelen kutunuzu (ve gerekiyorsa spam klasörünü) kontrol edin."
-                : "* E-posta adresi güvenlik sebebiyle değiştirilemez. Hesabınızı doğrulamak için \"Doğrula\" butonuna tıklayın."}
-          </p>
+          <p className="text-xs mt-1.5" style={{ color: "var(--text-subtle)" }}>* E-posta adresi güvenlik sebebiyle değiştirilemez.</p>
         </div>
 
         <button onClick={handleAccountSave}
